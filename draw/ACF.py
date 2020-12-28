@@ -15,7 +15,7 @@ plt.xlabel('Time Lag (Half Hours)')
 plt.ylabel('Autocorrelation')
 plt.show()
 
-csv_path = '../data/river.csv'
+csv_path = '../../../river/data/river.csv'
 df = pd.read_csv(csv_path)
 data = df['flows']
 print(adfuller(data))
