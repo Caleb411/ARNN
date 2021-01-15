@@ -1,35 +1,17 @@
-from math import sqrt
+from tensorflow.keras.models import *
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from main.nanrui.config import get_param
-from sklearn.linear_model import LinearRegression
-
-# 生成测试集
-def multivariate_data(dataset, target, start_index, end_index, history_size, target_size, step, single_step=True):
-    data = []
-    labels = []
-
-    start_index = start_index + history_size
-    if end_index is None:
-        end_index = len(dataset) - target_size
-
-    for i in range(start_index, end_index):
-        indices = range(i - history_size, i, step)
-        data.append(dataset[indices].reshape(-1))
-
-        if single_step:
-            labels.append(target[i + target_size])
-        else:
-            labels.append(target[i:i + target_size])
-
-    return np.array(data), np.array(labels)
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error, r2_score
+from math import sqrt
+from main.valve.config import get_param
 
 
 # 数据生成器函数
 def generator(data, lookback, delay, min_index, max_index, shuffle=False, batch_size=128, step=6):
     if max_index is None:
-        max_index = len(data) - delay - 1
+        max_index = len(data) - delay
     i = min_index + lookback
     while 1:
         if shuffle:
@@ -45,28 +27,22 @@ def generator(data, lookback, delay, min_index, max_index, shuffle=False, batch_
         for j, row in enumerate(rows):
             indices = range(rows[j] - lookback, rows[j], step)
             samples[j] = data[indices]
-            targets[j] = data[rows[j] + delay][0]
+            targets[j] = data[rows[j] + delay - 1][0]
         yield samples, targets, [None]
 
 
-if __name__ == '__main__':
+def getData():
     # 数据读取和预处理
-    csv_path = '../../data/nanrui.csv'
+    csv_path = '../../data/valve.csv'
     df = pd.read_csv(csv_path)
     data = np.array(df)
-    data = np.array(data[:, 2:3], dtype='float')  # 数据删除时间列
+    data = np.array(data[:, 2:], dtype='float')  # 数据删除时间列
 
     # 对数据进行归一化
     mean = data[:get_param('train_len')].mean(axis=0)
     data -= mean
     std = data[:get_param('train_len')].std(axis=0)
     data /= std
-
-    X_train, y_train = multivariate_data(data, data[:, 0], 0,
-                                         get_param('train_len'),
-                                         get_param('lookback'),
-                                         get_param('delay') - 1,
-                                         get_param('step'))
 
     test_gen = generator(data,
                          lookback=get_param('lookback'),
@@ -76,13 +52,11 @@ if __name__ == '__main__':
                          step=get_param('step'),
                          batch_size=get_param('batch_size'))
 
-    val_steps = (get_param('val_len') - get_param('lookback')) // get_param('batch_size')
-
     # 准备预测数据
     X = []
     y = []
 
-    howmanybatch = (get_param('test_len') - get_param('lookback')) // get_param('batch_size')
+    howmanybatch = (get_param('test_len') - get_param('lookback')) // get_param('batch_size')  # 需要预测多少个batch
     for test_one in test_gen:
         X.append(test_one[0])
         y.append(test_one[1])
@@ -90,15 +64,30 @@ if __name__ == '__main__':
         if howmanybatch == 0:
             break
 
-    test_y = np.hstack(y) * std[0] + mean[0]
+    return np.vstack(X), np.hstack(y), std[0], mean[0]
 
-    lin_reg = LinearRegression()
-    lin_reg.fit(X_train, y_train)
 
-    print(np.vstack(X).shape)
-    test_predict = lin_reg.predict(np.vstack(X).reshape(-1, get_param('lookback'))) * std[0] + mean[0]
+if __name__ == '__main__':
+    # 获取数据和温度的标准差
+    test_X, test_y, std, mean = getData()
 
-    # 误差评估
+    test_y = test_y * std + mean
+
+    # 加载模型
+    model = load_model("cnn_rnn_ar.h5")
+    test_predict = model.predict(test_X) * std + mean
+
+    # 评估
     print('mae : ' + str(mean_absolute_error(test_y, test_predict)))
     print('rmse : ' + str(sqrt(mean_squared_error(test_y, test_predict))))
     print('r2 : ' + str(r2_score(test_y, test_predict)))
+
+    # 预测结果部分展现
+    plt.figure(figsize=(6, 3))
+    plt.plot(range(250), test_y[200:450], label='data')
+    plt.plot(range(250), test_predict[200:450], label='forecast', linestyle='--')
+    plt.axis([0, 250, 20, 32])
+    plt.xlabel('Time(half hour)')
+    plt.ylabel('valve')
+    plt.legend(loc='best')
+    plt.show()

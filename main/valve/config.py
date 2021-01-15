@@ -11,7 +11,7 @@ params = {
 
     'unit': 256,            # 神经网络超参数
     'kernel_size': 3,       # 卷积核的大小
-    'hw': 3,               # AR超参数
+    'hw': 3,                # AR超参数
 
     'steps_per_epoch': 100, # 每轮训练的批量数
     'epochs': 10            # 训练的轮数

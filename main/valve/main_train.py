@@ -1,15 +1,12 @@
-import numpy as np
-import pandas as pd
-from main.nanrui.config import get_param, get_params
+from tensorflow.keras.callbacks import EarlyStopping
+from main.valve.config import get_params, get_param
+from main.model import get_model
 import tensorflow as tf
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 import os
 import random
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from math import sqrt
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import *
-from tensorflow.keras import backend as K
-from tensorflow.keras.callbacks import EarlyStopping
 
 
 # 设定随机种子
@@ -43,19 +40,17 @@ def generator(data, lookback, delay, min_index, max_index, shuffle=False, batch_
         yield samples, targets, [None]
 
 
-def get_model(param):
-    K.clear_session()
-    input = Input(shape=(param['lookback'], param['dim']))
-    lstm_out = LSTM(param['unit'], return_sequences=True)(input)
-    x = Lambda(lambda a: K.reshape(a, (-1, get_param('unit') * get_param('lookback'))))(lstm_out)
-    output = Dense(1)(x)
-    model = Model(input, output)
-    return model
+# 绘制学习曲线
+def plot_learning_curves(history):
+    pd.DataFrame(history.history).plot(figsize=(8, 5))
+    plt.grid(True)
+    plt.gca().set_ylim(0, 1)
+    plt.show()
 
 
 if __name__ == '__main__':
     # 数据读取和预处理
-    csv_path = '../../data/nanrui.csv'
+    csv_path = '../../data/valve.csv'
     df = pd.read_csv(csv_path)
     data = np.array(df)
     data = np.array(data[:, 2:], dtype='float')  # 数据删除时间列
@@ -83,47 +78,24 @@ if __name__ == '__main__':
                         step=get_param('step'),
                         batch_size=get_param('batch_size'))
 
-    test_gen = generator(data,
-                         lookback=get_param('lookback'),
-                         delay=get_param('delay'),
-                         min_index=get_param('train_len') + get_param('val_len'),
-                         max_index=None,
-                         step=get_param('step'),
-                         batch_size=get_param('batch_size'))
-
     val_steps = (get_param('val_len') - get_param('lookback')) // get_param('batch_size')
 
-    # 准备预测数据
-    X = []
-    y = []
-
-    howmanybatch = (get_param('test_len') - get_param('lookback')) // get_param('batch_size')
-    for test_one in test_gen:
-        X.append(test_one[0])
-        y.append(test_one[1])
-        howmanybatch = howmanybatch - 1
-        if howmanybatch == 0:
-            break
-
-    test_y = np.hstack(y) * std[0] + mean[0]
-
-    set_seed(666)
+    set_seed(666)  # for reproducibility 666
 
     model = get_model(get_params())
+
     model.summary()
     model.compile(optimizer='adam', loss='mae')
     callbacks = [EarlyStopping(patience=5, min_delta=1e-2)]
 
     history = model.fit(train_gen,
                         steps_per_epoch=get_param('steps_per_epoch'),
-                        epochs=get_param('epochs')//2,
+                        epochs=2,
                         validation_data=val_gen,
                         validation_steps=val_steps,
                         callbacks=callbacks)
+    plot_learning_curves(history)
 
-    test_predict = model.predict(np.vstack(X)) * std[0] + mean[0]
-
-    # 评估
-    print("mae\t%f" % mean_absolute_error(test_y, test_predict))
-    print("rmse\t%f" % sqrt(mean_squared_error(test_y, test_predict)))
-    print("r2\t%f" % r2_score(test_y, test_predict))
+    # 保存模型
+    model.save('cnn_rnn_ar.h5')
+    print('export model saved.')

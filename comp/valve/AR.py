@@ -2,8 +2,8 @@ from math import sqrt
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from main.nanrui.config import get_param
-from sklearn.linear_model import Ridge
+from main.valve.config import get_param
+from sklearn.linear_model import LinearRegression
 
 # 生成测试集
 def multivariate_data(dataset, target, start_index, end_index, history_size, target_size, step, single_step=True):
@@ -51,10 +51,10 @@ def generator(data, lookback, delay, min_index, max_index, shuffle=False, batch_
 
 if __name__ == '__main__':
     # 数据读取和预处理
-    csv_path = '../../data/nanrui.csv'
+    csv_path = '../../data/valve.csv'
     df = pd.read_csv(csv_path)
     data = np.array(df)
-    data = np.array(data[:, 2:], dtype='float')  # 数据删除时间列
+    data = np.array(data[:, 2:3], dtype='float')  # 数据删除时间列
 
     # 对数据进行归一化
     mean = data[:get_param('train_len')].mean(axis=0)
@@ -92,10 +92,11 @@ if __name__ == '__main__':
 
     test_y = np.hstack(y) * std[0] + mean[0]
 
-    lin_reg = Ridge()
+    lin_reg = LinearRegression()
     lin_reg.fit(X_train, y_train)
 
-    test_predict = lin_reg.predict(np.vstack(X).reshape(-1, get_param('lookback')*get_param('dim'))) * std[0] + mean[0]
+    print(np.vstack(X).shape)
+    test_predict = lin_reg.predict(np.vstack(X).reshape(-1, get_param('lookback'))) * std[0] + mean[0]
 
     # 误差评估
     print('mae : ' + str(mean_absolute_error(test_y, test_predict)))
